@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量子码 - 二维码图片分享</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="scan-lines"></div>
+    <div class="container">
+        <header class="glitch-header">
+            <h1 class="glitch-text" data-text="量子码">量子码</h1>
+            <p class="subtitle">二维码图片分享 | QR IMAGE SHARING</p>
+        </header>
+
+        <main class="main-content">
+            <div class="input-section">
+                <div class="input-wrapper">
+                    <label class="neon-label">上传图片</label>
+                    <div class="upload-area" id="upload-area">
+                        <input type="file" id="file-input" accept="image/*" hidden>
+                        <div class="upload-icon">📁</div>
+                        <p>点击或拖拽图片到这里</p>
+                        <p class="upload-hint">支持 JPG、PNG、GIF 格式，最大 10MB</p>
+                    </div>
+                    <div class="preview-container" id="preview-container" style="display: none;">
+                        <img id="image-preview" src="" alt="预览">
+                        <button class="remove-btn" id="remove-btn">✕</button>
+                    </div>
+                </div>
+                
+                <div class="options-panel">
+                    <div class="option-group">
+                        <label class="neon-label">二维码尺寸</label>
+                        <div class="size-selector">
+                            <button class="size-btn" data-size="200">小</button>
+                            <button class="size-btn active" data-size="300">中</button>
+                            <button class="size-btn" data-size="400">大</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="generate-btn" class="generate-btn" disabled>
+                    <span class="btn-text">上传并生成二维码</span>
+                    <span class="btn-icon">⚡</span>
+                </button>
+                
+                <div class="progress-bar" id="progress-bar" style="display: none;">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+            </div>
+            
+            <div class="output-section">
+                <div class="qr-display">
+                    <div id="qr-placeholder" class="placeholder">
+                        <div class="placeholder-icon">⬡</div>
+                        <p>二维码将在这里显示</p>
+                        <p class="hint">上传图片后生成二维码</p>
+                    </div>
+                    <div id="qr-result" class="qr-result hidden">
+                        <img id="qr-image" src="" alt="生成的二维码">
+                        <p class="qr-url" id="qr-url"></p>
+                    </div>
+                </div>
+                
+                <div class="actions" id="actions" style="display: none;">
+                    <button id="download-btn" class="action-btn download">
+                        <span>下载二维码</span>
+                    </button>
+                    <button id="copy-btn" class="action-btn copy">
+                        <span>复制链接</span>
+                    </button>
+                    <button id="test-btn" class="action-btn test">
+                        <span>测试扫码</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="cyber-footer">
+            <p>© 2026 量子码 | 扫码即享</p>
+            <div class="circuit-lines"></div>
+        </footer>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
