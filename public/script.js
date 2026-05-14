@@ -1,288 +1,211 @@
-// 量子码 - 二维码图片分享 JavaScript
+// 量子码 - 后台管理脚本 v3.0
 
-const CONFIG = {
-    API_BASE: '/api',
-    MAX_FILE_SIZE: 10 * 1024 * 1024 // 10MB
-};
+const API = '/api';
+const MAX_SIZE = 10 * 1024 * 1024;
 
-const state = {
-    selectedSize: 300,
-    selectedErrorLevel: 'M',
-    currentImageUrl: null,
-    currentQRCode: null,
-    uploadedFile: null
-};
+let selectedFile = null;
+let qrDataURL = null;
+let qrViewUrl = null;
 
-const elements = {
-    fileInput: document.getElementById('file-input'),
-    uploadArea: document.getElementById('upload-area'),
-    previewContainer: document.getElementById('preview-container'),
-    imagePreview: document.getElementById('image-preview'),
-    removeBtn: document.getElementById('remove-btn'),
-    generateBtn: document.getElementById('generate-btn'),
-    progressBar: document.getElementById('progress-bar'),
-    progressFill: document.getElementById('progress-fill'),
+const el = {
+    fileInput:     document.getElementById('file-input'),
+    uploadZone:    document.getElementById('upload-zone'),
+    previewWrap:   document.getElementById('preview-wrap'),
+    previewImg:    document.getElementById('preview-img'),
+    previewRemove: document.getElementById('preview-remove'),
+    submitBtn:     document.getElementById('submit-btn'),
+    submitText:    document.getElementById('submit-text'),
+    progressBar:   document.getElementById('progress-bar'),
+    progressFill:  document.getElementById('progress-fill'),
     qrPlaceholder: document.getElementById('qr-placeholder'),
-    qrResult: document.getElementById('qr-result'),
-    qrImage: document.getElementById('qr-image'),
-    qrUrl: document.getElementById('qr-url'),
-    actions: document.getElementById('actions'),
-    downloadBtn: document.getElementById('download-btn'),
-    copyBtn: document.getElementById('copy-btn'),
-    testBtn: document.getElementById('test-btn'),
-    sizeBtns: document.querySelectorAll('.size-btn')
+    qrBox:         document.getElementById('qr-box'),
+    qrImg:         document.getElementById('qr-img'),
+    qrLink:        document.getElementById('qr-link'),
+    qrDownload:    document.getElementById('qr-download'),
+    qrCopy:        document.getElementById('qr-copy'),
+    qrTest:        document.getElementById('qr-test'),
+    uploadList:    document.getElementById('upload-list'),
+    listCount:     document.getElementById('list-count'),
+    sizeOpts:      document.querySelectorAll('.size-opt')
 };
+
+let selectedSize = 300;
 
 function init() {
     bindEvents();
-    console.log('🚀 量子码图片分享已启动');
+    loadList();
 }
 
 function bindEvents() {
-    // 上传区域点击
-    elements.uploadArea.addEventListener('click', () => {
-        elements.fileInput.click();
+    el.uploadZone.addEventListener('click', () => el.fileInput.click());
+    el.fileInput.addEventListener('change', e => { if (e.target.files[0]) pickFile(e.target.files[0]); });
+
+    el.uploadZone.addEventListener('dragover', e => { e.preventDefault(); el.uploadZone.classList.add('dragover'); });
+    el.uploadZone.addEventListener('dragleave', e => { e.preventDefault(); el.uploadZone.classList.remove('dragover'); });
+    el.uploadZone.addEventListener('drop', e => {
+        e.preventDefault(); el.uploadZone.classList.remove('dragover');
+        if (e.dataTransfer.files[0]) pickFile(e.dataTransfer.files[0]);
     });
-    
-    // 文件选择
-    elements.fileInput.addEventListener('change', handleFileSelect);
-    
-    // 拖拽上传
-    elements.uploadArea.addEventListener('dragover', handleDragOver);
-    elements.uploadArea.addEventListener('dragleave', handleDragLeave);
-    elements.uploadArea.addEventListener('drop', handleDrop);
-    
-    // 移除图片
-    elements.removeBtn.addEventListener('click', handleRemoveImage);
-    
-    // 生成按钮
-    elements.generateBtn.addEventListener('click', handleGenerate);
-    
-    // 尺寸选择
-    elements.sizeBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            elements.sizeBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            state.selectedSize = parseInt(btn.dataset.size);
+
+    el.previewRemove.addEventListener('click', clearPreview);
+    el.submitBtn.addEventListener('click', handleSubmit);
+
+    el.sizeOpts.forEach(opt => {
+        opt.addEventListener('click', () => {
+            el.sizeOpts.forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
+            selectedSize = parseInt(opt.dataset.size);
         });
     });
-    
-    // 操作按钮
-    elements.downloadBtn.addEventListener('click', handleDownload);
-    elements.copyBtn.addEventListener('click', handleCopy);
-    elements.testBtn.addEventListener('click', handleTest);
+
+    el.qrDownload.addEventListener('click', downloadQR);
+    el.qrCopy.addEventListener('click', copyLink);
+    el.qrTest.addEventListener('click', () => { if (qrViewUrl) window.open(qrViewUrl, '_blank'); });
 }
 
-function handleDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    elements.uploadArea.classList.add('drag-over');
-}
+function pickFile(file) {
+    if (!file.type.startsWith('image/')) { toast('请选择图片文件', 'error'); return; }
+    if (file.size > MAX_SIZE) { toast('文件不能超过 10MB', 'error'); return; }
 
-function handleDragLeave(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    elements.uploadArea.classList.remove('drag-over');
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    elements.uploadArea.classList.remove('drag-over');
-    
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-        handleFile(files[0]);
-    }
-}
-
-function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file) {
-        handleFile(file);
-    }
-}
-
-function handleFile(file) {
-    // 验证文件类型
-    if (!file.type.startsWith('image/')) {
-        showNotification('请选择图片文件', 'error');
-        return;
-    }
-    
-    // 验证文件大小
-    if (file.size > CONFIG.MAX_FILE_SIZE) {
-        showNotification('文件大小不能超过10MB', 'error');
-        return;
-    }
-    
-    state.uploadedFile = file;
-    
-    // 显示预览
+    selectedFile = file;
     const reader = new FileReader();
-    reader.onload = (e) => {
-        elements.imagePreview.src = e.target.result;
-        elements.uploadArea.style.display = 'none';
-        elements.previewContainer.style.display = 'block';
-        elements.generateBtn.disabled = false;
+    reader.onload = e => {
+        el.previewImg.src = e.target.result;
+        el.uploadZone.style.display = 'none';
+        el.previewWrap.style.display = 'block';
+        el.submitBtn.disabled = false;
     };
     reader.readAsDataURL(file);
 }
 
-function handleRemoveImage() {
-    state.uploadedFile = null;
-    elements.fileInput.value = '';
-    elements.uploadArea.style.display = 'block';
-    elements.previewContainer.style.display = 'none';
-    elements.generateBtn.disabled = true;
-    
-    // 重置二维码显示
-    elements.qrPlaceholder.classList.remove('hidden');
-    elements.qrResult.classList.add('hidden');
-    elements.actions.style.display = 'none';
+function clearPreview() {
+    selectedFile = null;
+    el.fileInput.value = '';
+    el.uploadZone.style.display = '';
+    el.previewWrap.style.display = 'none';
+    el.submitBtn.disabled = true;
 }
 
-async function handleGenerate() {
-    if (!state.uploadedFile) {
-        showNotification('请先上传图片', 'error');
-        return;
-    }
-    
-    elements.generateBtn.disabled = true;
-    elements.generateBtn.querySelector('.btn-text').textContent = '上传中...';
-    elements.progressBar.style.display = 'block';
-    
+async function handleSubmit() {
+    if (!selectedFile) return;
+
+    el.submitBtn.disabled = true;
+    el.submitText.textContent = '上传中...';
+    el.progressBar.style.display = 'block';
+    el.progressFill.style.width = '30%';
+
     try {
-        // 上传图片
-        const formData = new FormData();
-        formData.append('image', state.uploadedFile);
-        
-        const uploadResponse = await fetch(`${CONFIG.API_BASE}/upload`, {
+        const fd = new FormData();
+        fd.append('image', selectedFile);
+
+        const uploadRes = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+        if (!uploadRes.ok) throw new Error('上传失败');
+        const data = await uploadRes.json();
+
+        qrViewUrl = data.viewUrl;
+        el.progressFill.style.width = '70%';
+        el.submitText.textContent = '生成二维码...';
+
+        const qrRes = await fetch(`${API}/generate-qr`, {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: qrViewUrl, size: selectedSize })
         });
-        
-        if (!uploadResponse.ok) {
-            throw new Error('上传失败');
-        }
-        
-        const uploadData = await uploadResponse.json();
-        state.currentImageUrl = uploadData.imageUrl;
-        
-        elements.progressFill.style.width = '100%';
-        
-        // 生成二维码
-        elements.generateBtn.querySelector('.btn-text').textContent = '生成二维码...';
-        
-        const qrResponse = await fetch(`${CONFIG.API_BASE}/generate-qr`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                url: state.currentImageUrl,
-                size: state.selectedSize
-            })
-        });
-        
-        if (!qrResponse.ok) {
-            throw new Error('生成二维码失败');
-        }
-        
-        const qrData = await qrResponse.json();
-        
-        // 显示二维码
-        displayQRCode(qrData);
-        
-    } catch (error) {
-        console.error('操作失败:', error);
-        showNotification(error.message, 'error');
+        if (!qrRes.ok) throw new Error('生成二维码失败');
+        const qrData = await qrRes.json();
+
+        el.progressFill.style.width = '100%';
+        qrDataURL = qrData.qrCode;
+
+        el.qrPlaceholder.style.display = 'none';
+        el.qrBox.style.display = 'flex';
+        el.qrImg.src = qrDataURL;
+        el.qrLink.textContent = qrViewUrl;
+
+        toast('✅ 上传成功，二维码已生成', 'success');
+        clearPreview();
+        loadList();
+
+    } catch (err) {
+        toast(err.message, 'error');
     } finally {
-        elements.generateBtn.disabled = false;
-        elements.generateBtn.querySelector('.btn-text').textContent = '上传并生成二维码';
+        el.submitBtn.disabled = false;
+        el.submitText.textContent = '上传并生成二维码';
         setTimeout(() => {
-            elements.progressBar.style.display = 'none';
-            elements.progressFill.style.width = '0%';
-        }, 1000);
+            el.progressBar.style.display = 'none';
+            el.progressFill.style.width = '0%';
+        }, 800);
     }
 }
 
-function displayQRCode(data) {
-    elements.qrPlaceholder.classList.add('hidden');
-    elements.qrResult.classList.remove('hidden');
-    elements.qrImage.src = data.qrCode;
-    elements.qrUrl.textContent = state.currentImageUrl;
-    elements.actions.style.display = 'flex';
-    
-    state.currentQRCode = data.qrCode;
-    
-    showNotification('二维码生成成功！', 'success');
+function downloadQR() {
+    if (!qrDataURL) return;
+    const a = document.createElement('a');
+    a.href = qrDataURL;
+    a.download = `qrcode-${Date.now()}.png`;
+    a.click();
 }
 
-function handleDownload() {
-    if (!state.currentQRCode) {
-        showNotification('没有可下载的二维码', 'error');
-        return;
-    }
-    
-    const link = document.createElement('a');
-    link.href = state.currentQRCode;
-    link.download = `qrcode-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    showNotification('下载成功！', 'success');
+async function copyLink() {
+    if (!qrViewUrl) return;
+    try { await navigator.clipboard.writeText(qrViewUrl); toast('链接已复制', 'success'); }
+    catch { toast('复制失败', 'error'); }
 }
 
-async function handleCopy() {
-    if (!state.currentImageUrl) {
-        showNotification('没有可复制的链接', 'error');
-        return;
-    }
-    
+async function loadList() {
     try {
-        await navigator.clipboard.writeText(state.currentImageUrl);
-        showNotification('链接已复制到剪贴板', 'success');
-    } catch (error) {
-        console.error('复制失败:', error);
-        showNotification('复制失败', 'error');
+        const res = await fetch(`${API}/images`);
+        const data = await res.json();
+        const images = data.images || [];
+        el.listCount.textContent = images.length;
+
+        if (!images.length) {
+            el.uploadList.innerHTML = '<div style="color:var(--text-dim); font-size:0.85rem; text-align:center; padding:24px 0;">暂无图片</div>';
+            return;
+        }
+
+        el.uploadList.innerHTML = images.slice().reverse().map(img => `
+            <div class="upload-item">
+                <img src="${img.imageUrl}" alt="" class="upload-item-thumb">
+                <div class="upload-item-info">
+                    <div class="upload-item-name" title="${img.viewUrl}">${img.filename}</div>
+                    <div class="upload-item-meta">
+                        <span>${fmtSize(img.size)}</span>
+                        <a href="${img.viewUrl}" target="_blank" class="upload-item-link">查看展示页 ↗</a>
+                    </div>
+                </div>
+                <button class="btn btn-danger btn-sm" style="padding:4px 10px; font-size:0.65rem;" onclick="delImage('${img.filename}')">删除</button>
+            </div>
+        `).join('');
+    } catch (err) {
+        console.error('loadList failed:', err);
     }
 }
 
-function handleTest() {
-    if (!state.currentImageUrl) {
-        showNotification('没有可测试的链接', 'error');
-        return;
-    }
-    
-    window.open(state.currentImageUrl, '_blank');
+async function delImage(filename) {
+    try {
+        const res = await fetch(`${API}/image/${filename}`, { method: 'DELETE' });
+        if (res.ok) { toast('已删除', 'success'); loadList(); }
+        else toast('删除失败', 'error');
+    } catch { toast('删除失败', 'error'); }
 }
 
-function showNotification(message, type = 'info') {
-    const existingNotification = document.querySelector('.notification');
-    if (existingNotification) {
-        existingNotification.remove();
-    }
-    
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
+function fmtSize(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+}
+
+function toast(msg, type = '') {
+    document.querySelectorAll('.toast').forEach(t => t.remove());
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.body.appendChild(t);
     setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
+        t.style.animation = 'slideOutRight 0.3s ease forwards';
+        setTimeout(() => t.remove(), 300);
     }, 3000);
 }
 
 document.addEventListener('DOMContentLoaded', init);
-
-window.QuantumQR = {
-    state,
-    generate: handleGenerate,
-    download: handleDownload,
-    copy: handleCopy,
-    test: handleTest
-};
