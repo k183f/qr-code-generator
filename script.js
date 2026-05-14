@@ -1,211 +1,264 @@
-// 量子码 - 后台管理脚本 v3.0
+/* 量子码 v3.0 - 全前端方案 */
+/* Telegraph 图床 + QRCode.js */
 
-const API = '/api';
-const MAX_SIZE = 10 * 1024 * 1024;
+const VIEWER_BASE = 'https://k183f.github.io/qrcode-view/';
+const HISTORY_KEY = 'quantum_qr_history';
+const MAX_HISTORY = 20;
 
 let selectedFile = null;
-let qrDataURL = null;
-let qrViewUrl = null;
+let currentQR = null;
 
-const el = {
-    fileInput:     document.getElementById('file-input'),
-    uploadZone:    document.getElementById('upload-zone'),
-    previewWrap:   document.getElementById('preview-wrap'),
-    previewImg:    document.getElementById('preview-img'),
-    previewRemove: document.getElementById('preview-remove'),
-    submitBtn:     document.getElementById('submit-btn'),
-    submitText:    document.getElementById('submit-text'),
-    progressBar:   document.getElementById('progress-bar'),
-    progressFill:  document.getElementById('progress-fill'),
-    qrPlaceholder: document.getElementById('qr-placeholder'),
-    qrBox:         document.getElementById('qr-box'),
-    qrImg:         document.getElementById('qr-img'),
-    qrLink:        document.getElementById('qr-link'),
-    qrDownload:    document.getElementById('qr-download'),
-    qrCopy:        document.getElementById('qr-copy'),
-    qrTest:        document.getElementById('qr-test'),
-    uploadList:    document.getElementById('upload-list'),
-    listCount:     document.getElementById('list-count'),
-    sizeOpts:      document.querySelectorAll('.size-opt')
-};
+// DOM
+const $ = id => document.getElementById(id);
+const uploadZone = $('uploadZone');
+const fileInput = $('fileInput');
+const previewArea = $('previewArea');
+const previewImg = $('previewImg');
+const fileName = $('fileName');
+const fileSize = $('fileSize');
+const uploadBtn = $('uploadBtn');
+const clearBtn = $('clearBtn');
+const progressBar = $('progressBar');
+const progressFill = $('progressFill');
+const progressText = $('progressText');
+const resultSection = $('resultSection');
+const qrCanvas = $('qrCanvas');
+const downloadBtn = $('downloadBtn');
+const copyBtn = $('copyBtn');
+const testBtn = $('testBtn');
+const historySection = $('historySection');
+const historyList = $('historyList');
+const clearHistoryBtn = $('clearHistoryBtn');
 
-let selectedSize = 300;
+// Upload Zone Events
+uploadZone.addEventListener('click', () => fileInput.click());
 
-function init() {
-    bindEvents();
-    loadList();
-}
+uploadZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+});
 
-function bindEvents() {
-    el.uploadZone.addEventListener('click', () => el.fileInput.click());
-    el.fileInput.addEventListener('change', e => { if (e.target.files[0]) pickFile(e.target.files[0]); });
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('drag-over');
+});
 
-    el.uploadZone.addEventListener('dragover', e => { e.preventDefault(); el.uploadZone.classList.add('dragover'); });
-    el.uploadZone.addEventListener('dragleave', e => { e.preventDefault(); el.uploadZone.classList.remove('dragover'); });
-    el.uploadZone.addEventListener('drop', e => {
-        e.preventDefault(); el.uploadZone.classList.remove('dragover');
-        if (e.dataTransfer.files[0]) pickFile(e.dataTransfer.files[0]);
-    });
+uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+});
 
-    el.previewRemove.addEventListener('click', clearPreview);
-    el.submitBtn.addEventListener('click', handleSubmit);
+fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
 
-    el.sizeOpts.forEach(opt => {
-        opt.addEventListener('click', () => {
-            el.sizeOpts.forEach(o => o.classList.remove('active'));
-            opt.classList.add('active');
-            selectedSize = parseInt(opt.dataset.size);
-        });
-    });
+// Button Events
+uploadBtn.addEventListener('click', uploadImage);
+clearBtn.addEventListener('click', clearPreview);
+downloadBtn.addEventListener('click', downloadQR);
+copyBtn.addEventListener('click', copyLink);
+testBtn.addEventListener('click', testOpen);
+clearHistoryBtn.addEventListener('click', () => {
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistory();
+});
 
-    el.qrDownload.addEventListener('click', downloadQR);
-    el.qrCopy.addEventListener('click', copyLink);
-    el.qrTest.addEventListener('click', () => { if (qrViewUrl) window.open(qrViewUrl, '_blank'); });
-}
-
-function pickFile(file) {
-    if (!file.type.startsWith('image/')) { toast('请选择图片文件', 'error'); return; }
-    if (file.size > MAX_SIZE) { toast('文件不能超过 10MB', 'error'); return; }
+function handleFile(file) {
+    if (!file.type.startsWith('image/')) {
+        return toast('请选择图片文件', 'error');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        return toast('图片不能超过 5MB', 'error');
+    }
 
     selectedFile = file;
     const reader = new FileReader();
     reader.onload = e => {
-        el.previewImg.src = e.target.result;
-        el.uploadZone.style.display = 'none';
-        el.previewWrap.style.display = 'block';
-        el.submitBtn.disabled = false;
+        previewImg.src = e.target.result;
+        fileName.textContent = file.name;
+        fileSize.textContent = formatSize(file.size);
+        previewArea.style.display = 'block';
+        uploadZone.style.display = 'none';
     };
     reader.readAsDataURL(file);
 }
 
 function clearPreview() {
     selectedFile = null;
-    el.fileInput.value = '';
-    el.uploadZone.style.display = '';
-    el.previewWrap.style.display = 'none';
-    el.submitBtn.disabled = true;
+    fileInput.value = '';
+    previewArea.style.display = 'none';
+    uploadZone.style.display = 'block';
 }
 
-async function handleSubmit() {
+async function uploadImage() {
     if (!selectedFile) return;
 
-    el.submitBtn.disabled = true;
-    el.submitText.textContent = '上传中...';
-    el.progressBar.style.display = 'block';
-    el.progressFill.style.width = '30%';
+    const btn = uploadBtn;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-icon">⟳</span> 上传中...';
+    progressBar.style.display = 'block';
+    progressFill.style.width = '20%';
+    progressText.textContent = '正在上传图片...';
 
     try {
-        const fd = new FormData();
-        fd.append('image', selectedFile);
+        // Step 1: Upload to Telegraph
+        const formData = new FormData();
+        formData.append('file', selectedFile);
 
-        const uploadRes = await fetch(`${API}/upload`, { method: 'POST', body: fd });
-        if (!uploadRes.ok) throw new Error('上传失败');
-        const data = await uploadRes.json();
-
-        qrViewUrl = data.viewUrl;
-        el.progressFill.style.width = '70%';
-        el.submitText.textContent = '生成二维码...';
-
-        const qrRes = await fetch(`${API}/generate-qr`, {
+        progressFill.style.width = '40%';
+        const uploadRes = await fetch('https://telegra.ph/upload', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: qrViewUrl, size: selectedSize })
+            body: formData
         });
-        if (!qrRes.ok) throw new Error('生成二维码失败');
-        const qrData = await qrRes.json();
 
-        el.progressFill.style.width = '100%';
-        qrDataURL = qrData.qrCode;
+        if (!uploadRes.ok) throw new Error('上传失败');
 
-        el.qrPlaceholder.style.display = 'none';
-        el.qrBox.style.display = 'flex';
-        el.qrImg.src = qrDataURL;
-        el.qrLink.textContent = qrViewUrl;
+        const uploadData = await uploadRes.json();
 
-        toast('✅ 上传成功，二维码已生成', 'success');
-        clearPreview();
-        loadList();
+        if (!uploadData || uploadData.error || !uploadData[0]?.src) {
+            throw new Error(uploadData?.error || '图片上传失败');
+        }
+
+        const imageSrc = 'https://telegra.ph' + uploadData[0].src;
+        progressFill.style.width = '70%';
+        progressText.textContent = '正在生成二维码...';
+
+        // Step 2: Generate QR
+        const viewUrl = VIEWER_BASE + '?src=' + encodeURIComponent(imageSrc);
+
+        await new Promise((resolve, reject) => {
+            QRCode.toCanvas(qrCanvas, viewUrl, {
+                width: 280,
+                margin: 2,
+                errorCorrectionLevel: 'M',
+                color: { dark: '#000000', light: '#ffffff' }
+            }, (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+
+        currentQR = { url: viewUrl, imageSrc };
+        progressFill.style.width = '100%';
+        progressText.textContent = '完成!';
+
+        // Show result
+        resultSection.style.display = 'block';
+        setTimeout(() => {
+            resultSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+
+        // Save to history
+        saveHistory({
+            imageSrc,
+            viewUrl,
+            thumb: previewImg.src,
+            time: Date.now()
+        });
+
+        toast('✅ 二维码生成成功!', 'success');
 
     } catch (err) {
-        toast(err.message, 'error');
+        console.error(err);
+        toast('❌ ' + err.message, 'error');
     } finally {
-        el.submitBtn.disabled = false;
-        el.submitText.textContent = '上传并生成二维码';
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">▲</span> 上传并生成二维码';
         setTimeout(() => {
-            el.progressBar.style.display = 'none';
-            el.progressFill.style.width = '0%';
-        }, 800);
+            progressBar.style.display = 'none';
+            progressFill.style.width = '0%';
+        }, 600);
     }
 }
 
 function downloadQR() {
-    if (!qrDataURL) return;
-    const a = document.createElement('a');
-    a.href = qrDataURL;
-    a.download = `qrcode-${Date.now()}.png`;
-    a.click();
+    if (!currentQR) return;
+    const link = document.createElement('a');
+    link.download = 'quantum-qr-' + Date.now() + '.png';
+    link.href = qrCanvas.toDataURL('image/png');
+    link.click();
+    toast('二维码已下载', 'info');
 }
 
 async function copyLink() {
-    if (!qrViewUrl) return;
-    try { await navigator.clipboard.writeText(qrViewUrl); toast('链接已复制', 'success'); }
-    catch { toast('复制失败', 'error'); }
-}
-
-async function loadList() {
+    if (!currentQR) return;
     try {
-        const res = await fetch(`${API}/images`);
-        const data = await res.json();
-        const images = data.images || [];
-        el.listCount.textContent = images.length;
-
-        if (!images.length) {
-            el.uploadList.innerHTML = '<div style="color:var(--text-dim); font-size:0.85rem; text-align:center; padding:24px 0;">暂无图片</div>';
-            return;
-        }
-
-        el.uploadList.innerHTML = images.slice().reverse().map(img => `
-            <div class="upload-item">
-                <img src="${img.imageUrl}" alt="" class="upload-item-thumb">
-                <div class="upload-item-info">
-                    <div class="upload-item-name" title="${img.viewUrl}">${img.filename}</div>
-                    <div class="upload-item-meta">
-                        <span>${fmtSize(img.size)}</span>
-                        <a href="${img.viewUrl}" target="_blank" class="upload-item-link">查看展示页 ↗</a>
-                    </div>
-                </div>
-                <button class="btn btn-danger btn-sm" style="padding:4px 10px; font-size:0.65rem;" onclick="delImage('${img.filename}')">删除</button>
-            </div>
-        `).join('');
-    } catch (err) {
-        console.error('loadList failed:', err);
+        await navigator.clipboard.writeText(currentQR.url);
+        toast('链接已复制', 'info');
+    } catch {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = currentQR.url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('链接已复制', 'info');
     }
 }
 
-async function delImage(filename) {
+function testOpen() {
+    if (currentQR) window.open(currentQR.url, '_blank');
+}
+
+// History
+function saveHistory(item) {
+    const history = getHistory();
+    history.unshift(item);
+    if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    renderHistory();
+}
+
+function getHistory() {
     try {
-        const res = await fetch(`${API}/image/${filename}`, { method: 'DELETE' });
-        if (res.ok) { toast('已删除', 'success'); loadList(); }
-        else toast('删除失败', 'error');
-    } catch { toast('删除失败', 'error'); }
+        return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    } catch { return []; }
 }
 
-function fmtSize(b) {
-    if (b < 1024) return b + ' B';
-    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
-    return (b / 1048576).toFixed(1) + ' MB';
+function renderHistory() {
+    const history = getHistory();
+    if (!history.length) {
+        historySection.style.display = 'none';
+        return;
+    }
+
+    historySection.style.display = 'block';
+    historyList.innerHTML = history.map(item => `
+        <div class="history-item" onclick="window.open('${item.viewUrl}','_blank')" title="${item.viewUrl}">
+            <img src="${item.thumb}" alt="历史图片" loading="lazy">
+            <div class="history-item-time">${timeAgo(item.time)}</div>
+        </div>
+    `).join('');
 }
 
-function toast(msg, type = '') {
-    document.querySelectorAll('.toast').forEach(t => t.remove());
-    const t = document.createElement('div');
-    t.className = `toast ${type}`;
-    t.textContent = msg;
-    document.body.appendChild(t);
+// Helpers
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function timeAgo(ts) {
+    const diff = Date.now() - ts;
+    if (diff < 60000) return '刚刚';
+    if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+    return Math.floor(diff / 86400000) + '天前';
+}
+
+function toast(msg, type = 'info') {
+    const el = document.createElement('div');
+    el.className = 'toast toast-' + type;
+    el.textContent = msg;
+    document.body.appendChild(el);
     setTimeout(() => {
-        t.style.animation = 'slideOutRight 0.3s ease forwards';
-        setTimeout(() => t.remove(), 300);
-    }, 3000);
+        el.style.opacity = '0';
+        el.style.transition = 'opacity .3s';
+        setTimeout(() => el.remove(), 300);
+    }, 2500);
 }
 
-document.addEventListener('DOMContentLoaded', init);
+// Init
+renderHistory();

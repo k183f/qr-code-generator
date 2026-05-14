@@ -3,91 +3,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>量子码 - 后台管理</title>
-    <link rel="stylesheet" href="style.css">
+    <title>量子码 - 图片上传</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
-    <div class="scan-lines"></div>
-    <div class="grid-bg"></div>
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
+    <div class="bg-grid"></div>
+    <div class="scan-line"></div>
 
     <div class="container">
-        <header class="page-header">
-            <h1 class="page-title">量子码</h1>
-            <p class="page-subtitle">Quantum QR — 后台管理</p>
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">◈</span>
+                <h1>量子码</h1>
+            </div>
+            <p class="subtitle">上传图片 · 生成二维码 · 扫码即看</p>
         </header>
 
-        <div class="admin-grid">
-            <!-- 左：上传 -->
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="panel-title">📤 上传图片</span>
+        <main class="main">
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="section-title">
+                    <span class="title-line"></span>
+                    <h2>上传图片</h2>
+                    <span class="title-line"></span>
                 </div>
 
-                <input type="file" id="file-input" accept="image/*" hidden>
-                <div class="upload-zone" id="upload-zone">
-                    <div class="upload-zone-icon">🖼️</div>
-                    <div class="upload-zone-text">点击或拖拽图片到这里</div>
-                    <div class="upload-zone-hint">JPG / PNG / GIF / WebP，最大 10MB</div>
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">
+                        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="8" y="12" width="48" height="40" rx="4"/>
+                            <circle cx="24" cy="28" r="6"/>
+                            <path d="M8 44l16-14 10 10 8-8 14 12"/>
+                        </svg>
+                    </div>
+                    <p class="upload-text">拖拽图片到这里，或点击选择</p>
+                    <p class="upload-hint">支持 JPG / PNG / GIF / WebP，最大 5MB</p>
+                    <input type="file" id="fileInput" accept="image/*" hidden>
                 </div>
 
-                <div class="preview-wrap" id="preview-wrap">
-                    <img id="preview-img" src="" alt="预览">
-                    <button class="preview-remove" id="preview-remove">✕</button>
-                </div>
-
-                <div style="margin-top:16px;">
-                    <label class="panel-title" style="font-size:0.7rem; display:block; margin-bottom:8px;">二维码尺寸</label>
-                    <div class="size-row">
-                        <div class="size-opt" data-size="200">200</div>
-                        <div class="size-opt active" data-size="300">300</div>
-                        <div class="size-opt" data-size="500">500</div>
+                <!-- Preview -->
+                <div class="preview-area" id="previewArea" style="display:none">
+                    <img id="previewImg" class="preview-img" alt="预览">
+                    <div class="preview-info">
+                        <span id="fileName"></span>
+                        <span id="fileSize"></span>
+                    </div>
+                    <div class="preview-actions">
+                        <button class="btn btn-primary" id="uploadBtn">
+                            <span class="btn-icon">▲</span> 上传并生成二维码
+                        </button>
+                        <button class="btn btn-ghost" id="clearBtn">✕ 取消</button>
                     </div>
                 </div>
 
-                <button class="btn btn-primary btn-full" id="submit-btn" disabled style="margin-top:20px;">
-                    <span id="submit-text">上传并生成二维码</span>
-                </button>
-                <div class="progress-bar" id="progress-bar">
-                    <div class="progress-fill" id="progress-fill"></div>
+                <!-- Progress -->
+                <div class="progress-bar" id="progressBar" style="display:none">
+                    <div class="progress-fill" id="progressFill"></div>
+                    <span class="progress-text" id="progressText">上传中...</span>
                 </div>
-            </div>
+            </section>
 
-            <!-- 右：二维码 -->
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="panel-title">📱 二维码</span>
-                </div>
-
-                <div id="qr-placeholder" style="text-align:center; padding:50px 0; color:var(--text-dim);">
-                    <div style="font-size:3.5rem; margin-bottom:14px; opacity:0.35;">⬡</div>
-                    <div>上传图片后二维码将在这里显示</div>
+            <!-- Result Section -->
+            <section class="result-section" id="resultSection" style="display:none">
+                <div class="section-title">
+                    <span class="title-line"></span>
+                    <h2>二维码已生成</h2>
+                    <span class="title-line"></span>
                 </div>
 
-                <div class="qr-box" id="qr-box">
-                    <img id="qr-img" src="" alt="QR">
-                    <div class="qr-link" id="qr-link"></div>
-                    <div class="qr-actions">
-                        <button class="btn btn-ghost btn-sm" id="qr-download">⬇ 下载</button>
-                        <button class="btn btn-ghost btn-sm" id="qr-copy">📋 复制</button>
-                        <button class="btn btn-ghost btn-sm" id="qr-test">🔗 测试</button>
+                <div class="result-card">
+                    <div class="qr-wrap">
+                        <canvas id="qrCanvas"></canvas>
                     </div>
+                    <div class="result-actions">
+                        <button class="btn btn-primary" id="downloadBtn">
+                            <span class="btn-icon">↓</span> 下载二维码
+                        </button>
+                        <button class="btn btn-outline" id="copyBtn">
+                            <span class="btn-icon">⧉</span> 复制链接
+                        </button>
+                        <button class="btn btn-ghost" id="testBtn">
+                            <span class="btn-icon">↗</span> 测试打开
+                        </button>
+                    </div>
+                    <p class="result-hint">手机扫码即可查看图片 ↑</p>
                 </div>
+            </section>
 
-                <!-- 已上传列表 -->
-                <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border-glow);">
-                    <div class="panel-title" style="font-size:0.7rem; margin-bottom:12px;">📂 已上传 (<span id="list-count">0</span>)</div>
-                    <div id="upload-list"></div>
+            <!-- History Section -->
+            <section class="history-section" id="historySection" style="display:none">
+                <div class="section-title">
+                    <span class="title-line"></span>
+                    <h2>上传记录</h2>
+                    <button class="btn btn-ghost btn-sm" id="clearHistoryBtn">清空</button>
+                    <span class="title-line"></span>
                 </div>
-            </div>
-        </div>
+                <div class="history-list" id="historyList"></div>
+            </section>
+        </main>
 
-        <footer class="site-footer">
-            <div class="circuit-line"></div>
-            <p>© 2026 量子码 Quantum QR — 扫码即享</p>
+        <footer class="footer">
+            <p>量子码 &copy; 2025 · 图片托管于 Telegraph</p>
         </footer>
     </div>
 
